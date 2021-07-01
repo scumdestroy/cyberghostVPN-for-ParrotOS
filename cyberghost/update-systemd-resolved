@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+
+main() {
+
+	local script_type="${1}"
+
+	shift
+
+	local dev="${1:-$dev}"
+
+	shift
+
+	if [[ -z "$script_type" ]]; then
+
+		echo 'No script type specified'
+
+		return 1
+
+	elif [[ -z "$dev" ]]; then
+
+		echo 'No device name specified'
+
+		return 1
+
+	else
+
+		[ "$script_type" ] || exit 0
+		[ "$dev" ] || exit 0
+
+		resolvConfFile="/etc/resolv.conf"
+		resolvConfBackupFile="/etc/resolv.conf.cyberghost"
+
+		isSymlink=1
+		if [  ! -L "${resolvConfFile}" ]; then
+			isSymlink=0
+		fi
+
+		split_into_parts() {
+			part1="$1"
+			part2="$2"
+			part3="$3"
+		}
+
+		case "$script_type" in
+			up)
+				NMSRVRS=""
+				SRCHS=""
+				for optionvarname in ${!foreign_option_*} ; do
+					option="${!optionvarname}"
+					echo "$option"
+					split_into_parts $option
+					if [ "$part1" = "dhcp-option" ] ; then
+						if [ "$part2" = "DNS" ] ; then
+							NMSRVRS="${NMSRVRS:+$NMSRVRS }$part3"
+						elif [ "$part2" = "DOMAIN" ] ; then
+							SRCHS="${SRCHS:+$SRCHS }$part3"
+						fi
+					fi
+				done
+
+				# if backup file does not exist
+				if [[ ! -f "${resolvConfBackupFile}" ]]; then
+					if [[ ! -L "${resolvConfFile}" ]]; then
+						cp "${resolvConfFile}" "${resolvConfBackupFile}"
+					else
+						mv "${resolvConfFile}" "${resolvConfBackupFile}"
+					fi
+				fi
+
+				# create new resolvconf file
+				> "${resolvConfFile}"
+
+				# and fill it VPN DNS servers
+				for NS in $NMSRVRS ; do
+					echo "nameserver $NS" >> "${resolvConfFile}"
+				done
+				;;
+
+			down)
+
+				if [ ! -L "${resolvConfBackupFile}" ]; then
+					cp "${resolvConfBackupFile}" "${resolvConfFile}"
+				else
+					mv "${resolvConfBackupFile}" "${resolvConfFile}"
+				fi
+				;;
+		esac
+
+	fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]] || [[ "$AUTOMATED_TESTING" == 1 ]]; then
+
+	set -o nounset
+	main "${script_type:-down}" "$@"
+fi
